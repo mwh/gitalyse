@@ -1,0 +1,96 @@
+#!/bin/bash
+# Copyright (c) 2014 Michael Homer
+#
+# Permission to use, copy, modify, and/or distribute this software for
+# any purpose with or without fee is hereby granted, provided that the
+# above copyright notice and this permission notice appear in all
+# copies.
+#
+# THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL
+# WARRANTIES WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED
+# WARRANTIES OF MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE
+# AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL
+# DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR
+# PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER
+# TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
+# PERFORMANCE OF THIS SOFTWARE.
+
+range=$1
+
+GITALYSE_LIBRARY=y
+source $(dirname "$0")/gitalyse
+
+sedex=""
+for skipfile in "${ignore_files[@]}"
+do
+    skipfile=$(sed -e 's/\//\\\//g' <<<"$skipfile")
+    sedex="$sedex/^\+\+\+ b\/$skipfile/,/^diff/d;"
+done
+
+if [ "$sedex" ]
+then
+    skip() {
+        sed -e "$sedex"
+    }
+else
+    skip() {
+        cat
+    }
+fi
+
+declare -A authorLines
+declare -A authorCommits
+declare -A authorLength
+declare -A authorBiggest
+declare -A authorBiggestCommit
+declare -a names
+totalCommits=0
+totalLines=0
+maxlen=0
+while read count name
+do
+    should_ignore_author "$name" && continue
+    totalCommits=$((totalCommits + count))
+    names=(${names:+"${names[@]}"} "$name")
+    authorCommits[$name]=$count
+    authorLines[$name]=0
+    authorBiggest[$name]=0
+    len=$(wc -m <<<"$name")
+    authorLength[$name]=$len
+    if [[ $len -gt $maxlen ]]
+    then
+        maxlen=$len
+    fi
+done < <(git log --pretty=format:%aN ${range:+"$range"}|sort|uniq -c|sort -gr)
+
+processedCommits=0
+while read hash name
+do
+    should_ignore_author "$name" && continue
+    added=$(git show --color=never $hash | skip | grep -cE '^\+([^+]|.[^+]|$)')
+    totalLines=$((totalLines + added))
+    authorLines[$name]=$((${authorLines[$name]} + $added))
+    if [ $added -gt ${authorBiggest[$name]} ]
+    then
+        authorBiggest[$name]=$added
+        authorBiggestCommit[$name]=$hash
+    fi
+    processedCommits=$((processedCommits + 1))
+    echo -ne "Processed $processedCommits/$totalCommits\\r"
+done < <(git log --pretty=format:'%H %aN' ${range:+"$range"})
+
+overallAverage=$(bc <<<"scale=2;$totalLines/$totalCommits")
+
+printf "Author %$((maxlen-8))s Lines Added  Proportion Commits Average\\n" ""
+for name in "${names[@]}"
+do
+    lines=${authorLines[$name]}
+    commits=${authorCommits[$name]}
+    len=${authorLength[$name]}
+    avg=$(bc <<<"scale=2;$lines/$commits")
+    prop=$(bc <<<"scale=2;$lines*100/$totalLines")
+    printf "%s %$((maxlen-len))s %'10i    %#7.2f%%  %'6i %# 7.2f\\n" "$name" "" "$lines" "$prop" "$commits" "$avg"
+    # Don't print this out usually
+    #echo "   ${authorBiggestCommit[$name]}  ${authorBiggest[$name]}"
+done
+printf "%$((maxlen))s %'10i    %#7.2f%%  %'6i %# 7.2f\\n" "" "$totalLines" "100" "$totalCommits" "$overallAverage"
