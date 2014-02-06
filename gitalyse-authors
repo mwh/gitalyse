@@ -35,7 +35,7 @@ do
     then
         maxlen=$len
     fi
-done < <(git log --pretty=format:%aN ${1:+"$1"}|sort|uniq -c|sort -gr)
+done < <(git log --pretty=tformat:%aN ${1:+"$1"}|sort|uniq -c|sort -gr)
 
 printf "Author %$((maxlen-8))s Commits  Proportion\\n" ""
 for name in "${names[@]}"
