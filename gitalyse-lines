@@ -76,7 +76,7 @@ do
         authorBiggestCommit[$name]=$hash
     fi
     processedCommits=$((processedCommits + 1))
-    echo -ne "Processed $processedCommits/$totalCommits\\r"
+    [ -t 1 ] && echo -ne "Processed $processedCommits/$totalCommits\\r"
 done < <(git log --pretty=tformat:'%H %aN' ${range:+"$range"})
 
 overallAverage=$(bc <<<"scale=2;$totalLines/$totalCommits")

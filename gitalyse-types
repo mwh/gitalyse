@@ -89,7 +89,7 @@ do
         authorCommitFileTypes[$afs]=$((authorCommitFileTypes[$afs] + 1))
     done
     processedCommits=$((processedCommits + 1))
-    echo -ne "Processed $processedCommits/$totalCommits\\r"
+    [ -t 1 ] && echo -ne "Processed $processedCommits/$totalCommits\\r"
 done < <(git log --pretty=tformat:'%H %aN' ${range:+"$range"})
 
 declare -A typelengths
