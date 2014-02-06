@@ -1,0 +1,178 @@
+#!/bin/bash
+# Copyright (c) 2014 Michael Homer
+#
+# Permission to use, copy, modify, and/or distribute this software for
+# any purpose with or without fee is hereby granted, provided that the
+# above copyright notice and this permission notice appear in all
+# copies.
+#
+# THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL
+# WARRANTIES WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED
+# WARRANTIES OF MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE
+# AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL
+# DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR
+# PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER
+# TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
+# PERFORMANCE OF THIS SOFTWARE.
+
+mode=commits
+range=$1
+if [[ "${range#--}" != "$range" ]]
+then
+    mode="${range#--}"
+    shift
+    range=$1
+fi
+
+GITALYSE_LIBRARY=y
+source $(dirname "$0")/gitalyse
+
+grepex="\0"
+for skipfile in "${ignore_files[@]}"
+do
+    skipfile=$(sed -e 's/\//\\\//g' <<<"$skipfile")
+    grepex="$grepex|^$skipfile"
+done
+
+declare -A authorLines
+declare -A authorCommits
+declare -A authorLength
+declare -A fileTypes
+declare -A authorFileTypes
+declare -A authorCommitFileTypes
+declare -a names
+totalCommits=0
+totalLines=0
+maxlen=0
+while read count name
+do
+    should_ignore_author "$name" && continue
+    totalCommits=$((totalCommits + count))
+    names=(${names:+"${names[@]}"} "$name")
+    authorCommits[$name]=$count
+    authorLines[$name]=0
+    len=$(wc -m <<<"$name")
+    authorLength[$name]=$len
+    if [[ $len -gt $maxlen ]]
+    then
+        maxlen=$len
+    fi
+done < <(git log --pretty=tformat:%aN ${range:+"$range"}|sort|uniq -c|sort -gr)
+
+processedCommits=0
+while read hash name
+do
+    should_ignore_author "$name" && continue
+    declare -A thiscommit=()
+    while read oldmode newmode oldhash newhash event filename
+    do
+        [ "$filename" ] || continue
+        grep -q '^\..*/' <<<"$filename" && continue
+        grep -qE "$grepex" <<<"$filename" && continue
+        if grep -q '\.' <<<"$filename"
+        then
+            filetype=$(sed -e 's/^.*\.//' <<<"$filename")
+        else
+            filetype=plain
+        fi
+        [ "${fileTypes[$filetype]}" ] || fileTypes[$filetype]=0
+        fileTypes[$filetype]=$((fileTypes[$filetype] + 1))
+        thiscommit[$filetype]=y
+        afs="$name:$filetype"
+        [ "${authorFileTypes[$afs]}" ] || authorFileTypes[$afs]=0
+        authorFileTypes[$afs]=$((authorFileTypes[$afs] + 1))
+    done < <(git show --raw --pretty=format: $hash)
+    for filetype in ${!thiscommit[@]}
+    do
+        afs="$name:$filetype"
+        [ "${authorCommitFileTypes[$afs]}" ] || authorCommitFileTypes[$afs]=0
+        authorCommitFileTypes[$afs]=$((authorCommitFileTypes[$afs] + 1))
+    done
+    processedCommits=$((processedCommits + 1))
+    echo -ne "Processed $processedCommits/$totalCommits\\r"
+done < <(git log --pretty=tformat:'%H %aN' ${range:+"$range"})
+
+declare -A typelengths
+for filetype in "${!fileTypes[@]}"
+do
+    len1=$(wc -m <<<"$filetype")
+    if [[ "$mode" = "commit-percent" ]] || [[ "$mode" = "file-percent" ]]
+    then
+        len2=8
+    else
+        len2=$(wc -m <<<"${fileTypes[$filetype]}")
+    fi
+    if [ $len1 -gt $len2 ]
+    then
+        typelengths[$filetype]=$len1
+    else
+        typelengths[$filetype]=$len2
+    fi
+done
+
+printf "%-${maxlen}s" "Author"
+for filetype in "${!fileTypes[@]}"
+do
+    len=${typelengths[$filetype]}
+    printf "%${len}s" $filetype
+done
+echo
+
+for name in "${names[@]}"
+do
+    printf "%-${maxlen}s" "$name"
+    for filetype in "${!fileTypes[@]}"
+    do
+        len=${typelengths[$filetype]}
+        if [[ "$mode" = "commits" ]]
+        then
+            printf "%${len}i" "${authorCommitFileTypes["$name:$filetype"]}"
+        elif [[ "$mode" = "files" ]]
+        then
+            printf "%${len}i" "${authorFileTypes["$name:$filetype"]}"
+        elif [[ "$mode" = "commit-percent" ]]
+        then
+            commits=${authorCommits[$name]}
+            typeCommits=${authorCommitFileTypes["$name:$filetype"]}
+            [ "$commits" ] || commits=0
+            [ "$typeCommits" ] || typeCommits=0
+            pc=$(bc <<<"scale=2;$typeCommits*100/$commits")
+            printf "%#$((len-1)).2f%%" "$pc"
+        elif [[ "$mode" = "file-percent" ]]
+        then
+            total=${fileTypes[$filetype]}
+            mods=${authorFileTypes["$name:$filetype"]}
+            [ "$total" ] || total=0
+            [ "$mods" ] || mods=0
+            pc=$(bc <<<"scale=2;$mods*100/$total")
+            printf "%#$((len-1)).2f%%" "$pc"
+        fi
+    done
+    if [[ "$mode" = "commit-percent" ]]
+    then
+        printf '%#7.2f%%' 100
+    elif [[ "$mode" = "commits" ]]
+    then
+        printf "%6i" "${authorCommits[$name]}"
+    fi
+    echo
+done
+if [[ "$mode" = "file-percent" ]]
+then
+    printf "%-${maxlen}s" ""
+    for filetype in "${!fileTypes[@]}"
+    do
+        len=${typelengths[$filetype]}
+        printf "%#$((len-1)).2f%%" "100"
+    done
+    echo
+elif [[ "$mode" = "files" ]]
+then
+    printf "%-${maxlen}s" ""
+    for filetype in "${!fileTypes[@]}"
+    do
+        len=${typelengths[$filetype]}
+        printf "%${len}i" "${fileTypes[$filetype]}"
+    done
+    echo
+fi

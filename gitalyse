@@ -65,6 +65,9 @@ case "$cmd" in
     authors)
         exec ${COMMAND_PATH}gitalyse-authors "$@"
         ;;
+    types)
+        exec ${COMMAND_PATH}gitalyse-types "$@"
+        ;;
     about|--version)
         echo "gitalyse computes statistics about the history of a git repository."
         echo "Written by Michael Homer"
@@ -76,6 +79,8 @@ case "$cmd" in
         echo "    Computes statistics on number of commits by each author."
         echo "  lines [RANGE]"
         echo "    Computes statistics on lines added by each author."
+        echo "  types [--commits|--files|--commit-percent|--file-percent] [RANGE]"
+        echo "    Computes statistics on changes to each type of file."
         echo
         echo "If RANGE is provided, only commits in this range will be"
         echo "analysed. See git rev-parse --help for formatting details."

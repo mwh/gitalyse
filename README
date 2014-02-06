@@ -8,7 +8,10 @@ over all history or a range of commits.
 The analyses can be run most easily with
   gitalyse authors
   gitalyse lines
-Both accept an optional range of a form accepted by git-rev-parse.
+  gitalyse types
+All accept an optional range of a form accepted by git-rev-parse. The
+types command additionally accepts four mode options: --commits,
+--files, --commit-percent, and --file-percent.
 
 The authors analysis produces output like this:
   Author          Commits  Proportion
@@ -28,6 +31,13 @@ The lines analysis produces output like this:
   Ingo Molnar               9       0.17%       1    9.00
   Christopher Li           45       0.88%       1   45.00
                         5,109     100.00%      95   53.77
+The types analysis produces various outputs according to the given mode.
+In commit mode, it shows the number of commits by each author touching
+each file type (determined by extension). In files mode, it lists the
+raw number of files of each type modified. In commit-percent mode, it
+gives the percentage of commits by each author modifying each file type.
+In file-percent mode, it gives the percentage of modifications to each
+file type made by each author.
 
 gitalyse can be configured to ignore certain files or authors in a
 repository using a .gitalyse file in the repository root. See the --help
